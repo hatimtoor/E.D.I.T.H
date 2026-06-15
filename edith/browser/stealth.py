@@ -68,6 +68,7 @@ class StealthConfig:
     min_delay_ms: int = 40
     max_delay_ms: int = 380
     user_agent: str | None = None
+    challenge_wait_s: float = 12.0      # wait this long for a JS challenge to auto-clear
 
 
 class StealthBrowser:
@@ -206,11 +207,12 @@ class StealthBrowser:
             "hasChrome: !!window.chrome })")
 
     # ── captcha ─────────────────────────────────────────────────────
-    async def _maybe_handle_captcha(self, page) -> None:
+    @staticmethod
+    async def _is_challenge(page) -> bool:
         # DOM-based detection — only a REAL challenge (widget iframe or Cloudflare
         # interstitial) counts. Substring scans false-positive on normal pages whose
         # scripts merely mention "recaptcha"/"hcaptcha".
-        is_captcha = await page.evaluate("""() => {
+        return await page.evaluate("""() => {
             const widget = document.querySelector(
               'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], '
               + 'iframe[src*="turnstile"], iframe[title*="challenge"], '
@@ -219,12 +221,23 @@ class StealthBrowser:
             const cf = t.includes('just a moment') || t.includes('attention required');
             return !!(widget || cf);
         }""")
-        if not is_captcha:
+
+    async def _maybe_handle_captcha(self, page) -> None:
+        if not await self._is_challenge(page):
             return
+        # Many JS challenges (non-interactive Cloudflare) auto-clear in a few seconds.
+        # Wait it out before giving up — only escalate if it truly persists.
+        import time as _t
+        deadline = _t.monotonic() + self.cfg.challenge_wait_s
+        while _t.monotonic() < deadline:
+            await asyncio.sleep(2)
+            if not await self._is_challenge(page):
+                return  # challenge cleared on its own
         if not self.cfg.captcha_key:
             raise BrowserUnavailable(
-                "CAPTCHA detected and no EDITH_CAPTCHA_KEY configured. Set a solver key or "
-                "route through a residential proxy to avoid the challenge.")
+                "CAPTCHA/Cloudflare challenge did not clear. The dominant factor is IP "
+                "reputation — route through a residential proxy (EDITH_PROXY / EDITH_PROXY_POOL), "
+                "use the camoufox engine, or set EDITH_CAPTCHA_KEY for a solver.")
         await self._solve_captcha(page)
 
     async def _solve_captcha(self, page) -> None:  # pragma: no cover - needs network
