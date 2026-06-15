@@ -1,0 +1,38 @@
+# env / secrets
+.env
+config/edith.yaml
+config/authorization.yaml
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# edith runtime state
+.edith/
+*.sqlite
+*.sqlite-*
+workspace/
+WORKING.md
+memory/*.md
+
+# browser
+.cache/
+ms-playwright/
+
+# os
+.DS_Store
+Thumbs.db
+
+# ── ruflo build-time runtime artifacts (not part of E.D.I.T.H) ────
+.claude-flow/
+.swarm/
+ruvector.db
+.claude/memory.db
+.omc/
+# local reference clones of Hermes/OpenClaw (study only, never committed)
+reference/

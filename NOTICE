@@ -1,0 +1,26 @@
+E.D.I.T.H. ("Even Dead, I'm The Hero")
+======================================
+
+E.D.I.T.H. is an ORIGINAL project — its own codebase. It is NOT a fork or clone of
+any other agent. We study two existing open-source agents as references and, where it
+genuinely helps, port specific pieces of their code with inline attribution.
+
+References studied (both MIT-licensed):
+
+  - Hermes Agent — Nous Research
+    https://github.com/NousResearch/hermes-agent  (MIT, Copyright (c) 2025 Nous Research)
+    Studied at commit 0428945b5b07f430e23b4fc28b2bff6887477463 (2026-06-14).
+    We learn from its self-improving skill loop, SQLite/FTS5 memory, sandbox backends,
+    multi-provider LLM layer, and Camoufox browser approach.
+
+  - OpenClaw — OpenClaw Foundation
+    https://github.com/openclaw/openclaw  (MIT, Copyright (c) 2026 OpenClaw Foundation)
+    We learn from its channel-adapter gateway pattern and Playwright/CDP browser stack.
+
+Attribution rule: any file or function ported/adapted from either project carries an
+inline comment naming the source (project + path) and its MIT license. The full reference
+repositories are kept locally (outside this repo, gitignored under reference/) for study
+and are never committed here.
+
+ruflo (v3.10.x) is used only as a BUILD-TIME orchestration tool (swarm, autopilot, memory,
+MCP). It is NOT a runtime dependency of E.D.I.T.H.
