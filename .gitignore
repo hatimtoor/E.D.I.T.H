@@ -16,9 +16,7 @@ venv/
 .edith/
 *.sqlite
 *.sqlite-*
-workspace/
 WORKING.md
-memory/*.md
 
 # browser
 .cache/

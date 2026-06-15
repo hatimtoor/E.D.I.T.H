@@ -1,4 +1,4 @@
-"""Import smoke + sandbox guard + config overlay. Must pass with zero extra deps/keys."""
+"""Import smoke + sandbox guard + config overlay + permission gate. No deps/keys needed."""
 import importlib
 
 import pytest
@@ -24,10 +24,26 @@ def test_config_env_overlay(monkeypatch):
     assert load_config().model == "openai:gpt-4o"
 
 
+def test_local_backend_needs_host_permission():
+    from edith.sandbox.backends import LocalBackend
+    from edith.core.config import PermissionLevel
+    with pytest.raises(PermissionError):
+        LocalBackend(permission_level=PermissionLevel.SANDBOXED).run("echo hi")
+
+
 def test_sandbox_blocks_destructive():
     from edith.sandbox.backends import LocalBackend
+    from edith.core.config import PermissionLevel
     with pytest.raises(PermissionError):
-        LocalBackend().run("rm -rf / ")
+        LocalBackend(permission_level=PermissionLevel.HOST).run("rm -rf / ")
+
+
+def test_channel_group_session_keyed_on_group():
+    from edith.channels.base import InboundMessage
+    a = InboundMessage("discord", "alice", "hi", is_group=True, group_id="g1")
+    b = InboundMessage("discord", "bob", "yo", is_group=True, group_id="g1")
+    assert a.session_key() == b.session_key()       # same group -> same session
+    assert InboundMessage("discord", "alice", "x").session_key() == "main"
 
 
 def test_vector_embeddings_are_normalized():

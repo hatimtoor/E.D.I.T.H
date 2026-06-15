@@ -32,12 +32,12 @@ def version():
 @app.command()
 def doctor():
     """Diagnose installed capabilities (green = ready)."""
+    import importlib.util
     cfg = load_config()
-    t = Table(title="E.D.I.T.H. doctor", show_header=True, header_style="bold")
+    t = Table(title="E.D.I.T.H. doctor", header_style="bold")
     t.add_column("component"); t.add_column("status")
 
     def probe(mod: str) -> str:
-        import importlib.util
         return "[green]ready[/]" if importlib.util.find_spec(mod) else "[yellow]not installed[/]"
 
     t.add_row("config", "[green]loaded[/]")
@@ -47,14 +47,11 @@ def doctor():
     t.add_row("browser: patchright", probe("patchright"))
     t.add_row("browser: playwright", probe("playwright"))
     t.add_row("browser: camoufox", probe("camoufox"))
-    # ruflo bridge
     from edith.ruflo import RufloBridge
     t.add_row("ruflo", RufloBridge(enabled=cfg.ruflo.enabled).status())
-    # security scope
     from edith.security import load_scope
     scope = load_scope(cfg.security.authorization_file)
-    t.add_row("security scope",
-              f"[green]active[/] ({scope.engagement})" if scope.is_active()
+    t.add_row("security scope", f"[green]active[/] ({scope.engagement})" if scope.is_active()
               else "[yellow]none[/] (offensive tools disabled)")
     con.print(t)
 
@@ -110,11 +107,10 @@ def browser_preflight():
 
 
 @browser_app.command("test")
-def browser_test(url: str = "https://example.com"):
-    """Open a URL with the stealth stack and report the page title."""
+def browser_test(url: str = typer.Argument("https://example.com")):
+    """Open a URL with the stealth stack; report the title + spoofed fingerprint."""
     import asyncio
-    from edith.browser import StealthBrowser, BrowserUnavailable
-    from edith.browser.stealth import StealthConfig
+    from edith.browser import StealthBrowser, StealthConfig, BrowserUnavailable
     cfg = load_config()
     sc = StealthConfig(headless=cfg.browser.headless, engine=cfg.browser.engine,
                        proxy=cfg.browser.proxy, proxy_pool=cfg.browser.proxy_pool,
@@ -123,7 +119,8 @@ def browser_test(url: str = "https://example.com"):
     async def _go():
         async with StealthBrowser(sc) as b:
             page = await b.goto(url)
-            con.print(f"[green]title:[/] {await page.title()}")
+            fp = await b.fingerprint_report(page)
+            con.print(Panel(f"title: {await page.title()}\nfingerprint: {fp}", title=f"stealth -> {url}"))
 
     try:
         asyncio.run(_go())
@@ -180,7 +177,7 @@ def security_scope():
     from edith.security import load_scope
     s = load_scope(load_config().security.authorization_file)
     if not s.is_active():
-        con.print("[yellow]no active scope[/] — offensive tools are disabled. "
+        con.print("[yellow]no active scope[/] — offensive tools disabled. "
                   "Create config/authorization.yaml (see config/authorization.example.yaml).")
         return
     con.print(Panel(f"engagement: {s.engagement}\nby: {s.authorized_by}\n"

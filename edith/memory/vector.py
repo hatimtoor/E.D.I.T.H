@@ -1,14 +1,14 @@
-"""A dependency-free local embedder + cosine similarity.
+"""Dependency-free local embedder + cosine similarity.
 
-Uses a deterministic hashing embedder (the "hashing trick") so the memory layer works
-with zero external services or API keys. Swap in a real embedding model later by
-implementing the same `embed(text) -> list[float]` contract.
+Deterministic hashing embedder (the "hashing trick") so memory works with zero external
+services or keys. Swap in a real model later by matching `embed(text) -> list[float]`.
 """
 from __future__ import annotations
 
 import hashlib
 import math
 import re
+import struct
 
 _TOKEN = re.compile(r"[a-z0-9]+")
 
@@ -28,17 +28,13 @@ def embed(text: str, dim: int = 256) -> list[float]:
 def cosine(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         return 0.0
-    return sum(x * y for x, y in zip(a, b))  # both already L2-normalized
+    return sum(x * y for x, y in zip(a, b))  # both L2-normalized
 
 
 def pack(vec: list[float]) -> bytes:
-    import struct
-
     return struct.pack(f"<{len(vec)}f", *vec)
 
 
 def unpack(blob: bytes) -> list[float]:
-    import struct
-
     n = len(blob) // 4
     return list(struct.unpack(f"<{n}f", blob))

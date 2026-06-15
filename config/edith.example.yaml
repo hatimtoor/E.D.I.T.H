@@ -16,7 +16,7 @@ browser:
 
 memory:
   db_path: .edith/memory.sqlite
-  profile: default           # namespacing kills the Hermes "junk drawer" effect
+  profile: default           # namespacing kills the "junk drawer" effect
   dedup_threshold: 0.92
   embed_dim: 256
 
@@ -26,4 +26,4 @@ security:
 
 ruflo:
   enabled: true
-  default_topology: hierarchical   # hierarchical | mesh | adaptive
+  default_topology: hierarchical

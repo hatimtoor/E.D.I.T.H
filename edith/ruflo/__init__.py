@@ -1,11 +1,7 @@
-"""ruflo orchestration bridge.
-
-ruflo exposes MCP tools (memory_store, memory_search, swarm_init, agent_spawn,
-hooks_route). When the MCP server is connected, E.D.I.T.H delegates swarm
-coordination and shared memory to it. When it is NOT connected (the common case),
-this bridge transparently falls back to E.D.I.T.H's local MemoryStore + an in-process
-task runner, so nothing breaks.
+"""ruflo orchestration bridge (optional, build-time). Detects a local `ruflo` CLI and
+delegates swarm/shared-memory to it; falls back to in-process tasks + local MemoryStore
+when absent. ruflo is NOT a runtime dependency of E.D.I.T.H.
 """
-from edith.ruflo.bridge import RufloBridge
+from edith.ruflo.bridge import RufloBridge, SwarmHandle
 
-__all__ = ["RufloBridge"]
+__all__ = ["RufloBridge", "SwarmHandle"]

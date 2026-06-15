@@ -1,8 +1,5 @@
-"""Authorized reconnaissance helpers.
-
-Every function calls `assert_in_scope()` first. With no scope file present, all of
-these refuse to run — by design. Implementations use the stdlib so the package stays
-installable; heavier tooling (nmap, masscan) is shelled out only when present.
+"""Authorized reconnaissance helpers. Every function calls `assert_in_scope()` first;
+with no scope file they all refuse. Stdlib-only so the package stays installable.
 """
 from __future__ import annotations
 
@@ -22,7 +19,6 @@ class HostReport:
     banners: dict[int, str] = field(default_factory=dict)
 
 
-# A conservative default port set (top services). Override per engagement.
 _COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 3306, 3389, 5432, 6379, 8080, 8443]
 
 
@@ -36,11 +32,14 @@ def resolve(target: str, scope: AuthorizationScope) -> str | None:
 
 def scan_ports(target: str, scope: AuthorizationScope, *, ports: list[int] | None = None,
                timeout: float = 0.6) -> HostReport:
-    """TCP connect scan of an authorized host. Connect-scan only (no raw packets)."""
+    """TCP connect scan of an authorized host (no raw packets)."""
     assert_in_scope(target, scope, action="port-scan")
     report = HostReport(target=target)
     report.resolved_ip = resolve(target, scope)
     ip = report.resolved_ip or target
+    # DNS-rebinding defense: the resolved IP must ALSO be in scope.
+    if ip != target:
+        assert_in_scope(ip, scope, action="port-scan (resolved IP)")
     for port in ports or _COMMON_PORTS:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(timeout)
@@ -72,7 +71,7 @@ def inspect_tls(target: str, scope: AuthorizationScope, *, port: int = 443) -> d
     try:
         with socket.create_connection((target, port), timeout=2) as raw:
             with ctx.wrap_socket(raw, server_hostname=target) as tls:
-                cert = tls.getpeercert(binary_form=False) or {}
-                return {"protocol": tls.version(), "cipher": tls.cipher(), "cert": cert}
+                return {"protocol": tls.version(), "cipher": tls.cipher(),
+                        "cert": tls.getpeercert(binary_form=False) or {}}
     except OSError as e:
         return {"error": str(e)}

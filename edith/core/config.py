@@ -20,8 +20,8 @@ except Exception:  # pragma: no cover - dotenv optional
 
 
 # ── Permission matrix ───────────────────────────────────────────────
-# Mirrors Hermes' 5-level control idea but makes it explicit and per-capability,
-# fixing OpenClaw's "wide permissions -> unauthorized actions" grievance.
+# Explicit per-capability levels (fixes OpenClaw's "wide permissions -> unauthorized
+# actions" grievance). Mirrors Hermes' 5-level control idea but enforced in code.
 class PermissionLevel:
     READ_ONLY = 0      # may read, never mutate
     SUGGEST = 1        # may propose actions, requires confirmation
@@ -32,11 +32,10 @@ class PermissionLevel:
 
 class BrowserConfig(BaseModel):
     headless: bool = True
-    engine: str = "patchright"            # patchright | playwright
+    engine: str = "patchright"            # patchright | playwright | camoufox
     proxy: str | None = None
     proxy_pool: list[str] = Field(default_factory=list)
     captcha_key: str | None = None
-    # human-cadence jitter bounds (ms) — defeats naive timing fingerprints
     min_action_delay_ms: int = 40
     max_action_delay_ms: int = 380
     locale: str = "en-US"
@@ -46,18 +45,18 @@ class BrowserConfig(BaseModel):
 class MemoryConfig(BaseModel):
     db_path: str = ".edith/memory.sqlite"
     profile: str = "default"              # namespacing fixes the "junk drawer" effect
-    dedup_threshold: float = 0.92         # cosine sim above which a write is a dup
-    embed_dim: int = 256                  # local hashing-embedder dimension
+    dedup_threshold: float = 0.92
+    embed_dim: int = 256
 
 
 class SecurityConfig(BaseModel):
     authorization_file: str = "config/authorization.yaml"
-    require_authorization: bool = True    # offensive ops refused without scope
+    require_authorization: bool = True
 
 
 class RufloConfig(BaseModel):
     enabled: bool = True
-    default_topology: str = "hierarchical"  # hierarchical | mesh | adaptive
+    default_topology: str = "hierarchical"
 
 
 class Config(BaseModel):
@@ -70,13 +69,15 @@ class Config(BaseModel):
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     ruflo: RufloConfig = Field(default_factory=RufloConfig)
 
-    # raw provider keys resolved from env (never persisted to yaml)
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     openrouter_api_key: str | None = None
 
     @property
     def home_path(self) -> Path:
+        return Path(self.home)
+
+    def ensure_home(self) -> Path:
         p = Path(self.home)
         p.mkdir(parents=True, exist_ok=True)
         return p
@@ -101,7 +102,6 @@ def load_config(path: str | os.PathLike[str] | None = None) -> Config:
 
     cfg = Config(**data)
 
-    # env overlays (highest precedence)
     cfg.home = os.getenv("EDITH_HOME", cfg.home)
     cfg.model = os.getenv("EDITH_MODEL", cfg.model)
     cfg.log_level = os.getenv("EDITH_LOG_LEVEL", cfg.log_level)

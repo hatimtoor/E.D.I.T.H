@@ -1,4 +1,4 @@
-"""Skills: progressive loading + the protection lock that Hermes lacks."""
+"""Skills: progressive loading + the protection lock + secret scanning on update."""
 import pytest
 
 from edith.skills import Skill, SkillRegistry, SkillLevel, ProtectedSkillError
@@ -23,7 +23,6 @@ def test_protected_skill_cannot_be_edited_by_agent(tmp_path):
     r.protect("prod-deploy")
     with pytest.raises(ProtectedSkillError):
         r.update("prod-deploy", body="agent rewrote this", by_agent=True)
-    # human edit still allowed
     r.update("prod-deploy", body="human edit", by_agent=False)
     assert "human edit" in r.load("prod-deploy")
 
@@ -36,10 +35,13 @@ def test_protected_skill_cannot_be_deleted_by_agent(tmp_path):
         r.delete("keep", by_agent=True)
 
 
-def test_secret_in_skill_is_refused(tmp_path):
+def test_secret_in_skill_is_refused_on_create_and_update(tmp_path):
     r = reg(tmp_path)
     with pytest.raises(ValueError):
         r.create(Skill(name="leak", summary="s", body="api_key=sk-supersecret123"))
+    r.create(Skill(name="clean", summary="s", body="echo hi"))
+    with pytest.raises(ValueError):
+        r.update("clean", body="password = hunter2hunter2", by_agent=True)
 
 
 def test_persistence_across_instances(tmp_path):
