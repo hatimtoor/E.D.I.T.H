@@ -58,6 +58,13 @@ class Agent:
     def register(self, name: str, description: str, parameters: dict, fn: Callable[..., str]):
         self.tools[name] = Tool(ToolSpec(name, description, parameters), fn)
 
+    def load_default_tools(self):
+        """Wire the built-in toolset (web, memory, shell, security, files) so the
+        agent can actually *do things*, not just chat."""
+        from edith.tools import register_default_tools
+        self._toolbox = register_default_tools(self)
+        return self._toolbox
+
     def _toolspecs(self) -> list[ToolSpec]:
         return [t.spec for t in self.tools.values()]
 

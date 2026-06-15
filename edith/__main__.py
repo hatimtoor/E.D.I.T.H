@@ -12,10 +12,12 @@ from edith.core.config import load_config
 app = typer.Typer(help="E.D.I.T.H. — Even Dead, I'm The Hero. Autonomous local-first agent.",
                   no_args_is_help=True, add_completion=False)
 browser_app = typer.Typer(help="Stealth browser controls")
+web_app = typer.Typer(help="Direct web actions (no LLM key needed)")
 skills_app = typer.Typer(help="Skill registry (progressive load + protection)")
 memory_app = typer.Typer(help="3-layer memory")
 sec_app = typer.Typer(help="Authorized-security toolkit")
 app.add_typer(browser_app, name="browser")
+app.add_typer(web_app, name="web")
 app.add_typer(skills_app, name="skills")
 app.add_typer(memory_app, name="memory")
 app.add_typer(sec_app, name="security")
@@ -56,32 +58,81 @@ def doctor():
     con.print(t)
 
 
-@app.command()
-def run(task: str):
-    """Run a single task through the agent loop."""
+def _new_agent():
+    """Build an agent with the full action-toolset loaded."""
     from edith.core.agent import Agent
     agent = Agent()
+    agent.load_default_tools()
+    return agent
+
+
+def _explain_llm_error(e: Exception):
+    from edith.core.llm import LLMError
+    if isinstance(e, LLMError):
+        con.print(f"[red]LLM unavailable:[/] {e}")
+        con.print("[dim]Set a key (ANTHROPIC_API_KEY / OPENAI_API_KEY) or use a local model: "
+                  "`EDITH_MODEL=ollama:llama3.1 python -m edith run \"...\"`. "
+                  "See `python -m edith models`.[/]")
+        return True
+    return False
+
+
+@app.command()
+def run(task: str):
+    """Run a single task through the agent loop (web, shell, memory, security tools wired in)."""
+    agent = _new_agent()
     try:
         con.print(Panel(agent.step(task), title="E.D.I.T.H"))
+    except Exception as e:
+        if not _explain_llm_error(e):
+            raise
     finally:
         agent.close()
 
 
 @app.command()
 def chat():
-    """Interactive chat session."""
-    from edith.core.agent import Agent
-    agent = Agent()
-    con.print("[bold cyan]E.D.I.T.H online.[/] Ctrl-C to exit.")
+    """Interactive chat session with the full toolset."""
+    agent = _new_agent()
+    con.print("[bold cyan]E.D.I.T.H online.[/] Tools: web, memory, shell, security, files. Ctrl-C to exit.")
     try:
         while True:
             user = con.input("[bold]you ›[/] ")
             if user.strip():
-                con.print(Panel(agent.step(user), title="E.D.I.T.H"))
+                try:
+                    con.print(Panel(agent.step(user), title="E.D.I.T.H"))
+                except Exception as e:
+                    if not _explain_llm_error(e):
+                        raise
     except (KeyboardInterrupt, EOFError):
         con.print("\n[dim]session ended[/]")
     finally:
         agent.close()
+
+
+@app.command()
+def models():
+    """Discover usable LLMs: cloud keys + local Ollama / LM Studio models."""
+    import os
+    t = Table(title="LLM providers", header_style="bold")
+    t.add_column("provider"); t.add_column("status / models")
+    t.add_row("anthropic", "[green]key set[/]" if os.getenv("ANTHROPIC_API_KEY") else "[dim]no key[/]")
+    t.add_row("openai", "[green]key set[/]" if os.getenv("OPENAI_API_KEY") else "[dim]no key[/]")
+    for name, url in (("ollama", "http://localhost:11434/api/tags"),
+                      ("lmstudio", "http://localhost:1234/v1/models")):
+        try:
+            import urllib.request, json as _j
+            with urllib.request.urlopen(url, timeout=2) as r:
+                data = _j.loads(r.read().decode())
+            if name == "ollama":
+                tags = [m["name"] for m in data.get("models", [])][:8]
+            else:
+                tags = [m["id"] for m in data.get("data", [])][:8]
+            t.add_row(name, "[green]running[/] " + (", ".join(tags) or "(no models pulled)"))
+        except Exception:
+            t.add_row(name, "[dim]not running[/]")
+    con.print(t)
+    con.print("[dim]Use one with:  EDITH_MODEL=ollama:<model> python -m edith run \"...\"[/]")
 
 
 # ── browser ─────────────────────────────────────────────────────────
@@ -197,6 +248,41 @@ def security_scan(target: str):
                         f"tls: {rep.tls_info.get('protocol', '-')}", title=f"scan {target}"))
     except OutOfScopeError as e:
         con.print(f"[red]refused:[/] {e}")
+
+
+# ── web (direct, no LLM key) ─────────────────────────────────────────
+def _browser_cfg():
+    b = load_config().browser
+    from edith.browser.stealth import StealthConfig
+    return StealthConfig(headless=b.headless, engine=b.engine, proxy=b.proxy,
+                         proxy_pool=b.proxy_pool, captcha_key=b.captcha_key,
+                         locale=b.locale, timezone=b.timezone)
+
+
+@web_app.command("get")
+def web_get(url: str, chars: int = 2000):
+    """Fetch a page through the stealth browser and print its text."""
+    from edith.browser.fetch import browse
+    try:
+        r = browse(url, cfg=_browser_cfg(), max_chars=chars)
+        con.print(Panel(r["text"], title=f"{r['title']}  ({r['url']})"))
+    except Exception as e:
+        con.print(f"[red]error:[/] {type(e).__name__}: {e}")
+
+
+@web_app.command("search")
+def web_search_cmd(query: str, limit: int = 5):
+    """Search the web (stealth, unblockable) and print results."""
+    from edith.browser.fetch import search
+    try:
+        results = search(query, cfg=_browser_cfg(), limit=limit)
+        if not results:
+            con.print("[yellow]no results[/]")
+            return
+        for i, r in enumerate(results, 1):
+            con.print(f"[bold]{i}. {r['title']}[/]\n   {r['url']}\n   [dim]{r.get('snippet','')}[/]")
+    except Exception as e:
+        con.print(f"[red]error:[/] {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":

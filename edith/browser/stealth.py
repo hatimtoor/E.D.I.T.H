@@ -207,9 +207,19 @@ class StealthBrowser:
 
     # ── captcha ─────────────────────────────────────────────────────
     async def _maybe_handle_captcha(self, page) -> None:
-        content = (await page.content()).lower()
-        markers = ("recaptcha", "hcaptcha", "cf-challenge", "are you a robot", "cf-turnstile")
-        if not any(m in content for m in markers):
+        # DOM-based detection — only a REAL challenge (widget iframe or Cloudflare
+        # interstitial) counts. Substring scans false-positive on normal pages whose
+        # scripts merely mention "recaptcha"/"hcaptcha".
+        is_captcha = await page.evaluate("""() => {
+            const widget = document.querySelector(
+              'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], '
+              + 'iframe[src*="turnstile"], iframe[title*="challenge"], '
+              + '#challenge-form, #challenge-running, .cf-challenge, #cf-challenge-stage');
+            const t = (document.title || '').toLowerCase();
+            const cf = t.includes('just a moment') || t.includes('attention required');
+            return !!(widget || cf);
+        }""")
+        if not is_captcha:
             return
         if not self.cfg.captcha_key:
             raise BrowserUnavailable(
