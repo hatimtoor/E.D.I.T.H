@@ -136,3 +136,12 @@ RELEASE_v*.md
 # Desktop demo-run scratch output (hermes writes demo/*.txt during recorded
 # walkthroughs). Throwaway artifacts, never part of the app.
 apps/desktop/demo/
+
+# ── E.D.I.T.H / ruflo runtime artifacts ──────────────────────────
+.claude-flow/
+.swarm/
+ruvector.db
+.claude/memory.db
+.omc/
+.pytest_cache/
+.edith/

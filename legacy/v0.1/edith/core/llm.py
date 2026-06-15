@@ -1,0 +1,144 @@
+"""Provider-agnostic LLM client.
+
+Supports anthropic / openai / openrouter via a tiny unified `chat()` interface.
+Heavy SDKs are imported lazily so the package imports cleanly with no keys installed.
+Model strings look like "anthropic:claude-opus-4-8" or "openai:gpt-4o".
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass
+class Message:
+    role: str  # "system" | "user" | "assistant" | "tool"
+    content: str
+    name: str | None = None
+
+
+@dataclass
+class ToolSpec:
+    name: str
+    description: str
+    parameters: dict[str, Any]  # JSON schema
+
+
+@dataclass
+class LLMResponse:
+    text: str
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    raw: Any = None
+
+
+class LLMError(RuntimeError):
+    pass
+
+
+class LLMClient:
+    """Thin wrapper. Resolves provider from the `provider:model` string."""
+
+    def __init__(self, model: str, *, api_keys: dict[str, str | None] | None = None):
+        if ":" in model:
+            self.provider, self.model = model.split(":", 1)
+        else:
+            self.provider, self.model = "anthropic", model
+        self.api_keys = api_keys or {}
+
+    # ── public ──────────────────────────────────────────────────────
+    def chat(
+        self,
+        messages: list[Message],
+        *,
+        tools: list[ToolSpec] | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> LLMResponse:
+        if self.provider == "anthropic":
+            return self._anthropic(messages, tools, max_tokens, temperature)
+        if self.provider in ("openai", "openrouter"):
+            return self._openai(messages, tools, max_tokens, temperature)
+        raise LLMError(f"unknown provider: {self.provider!r}")
+
+    # ── providers (lazy imports) ────────────────────────────────────
+    def _anthropic(self, messages, tools, max_tokens, temperature) -> LLMResponse:
+        try:
+            import anthropic
+        except ImportError as e:  # pragma: no cover
+            raise LLMError("pip install 'edith[llm]' to use Anthropic") from e
+
+        key = self.api_keys.get("anthropic")
+        if not key:
+            raise LLMError("ANTHROPIC_API_KEY not set")
+        client = anthropic.Anthropic(api_key=key)
+
+        system = "\n\n".join(m.content for m in messages if m.role == "system") or None
+        convo = [
+            {"role": m.role, "content": m.content}
+            for m in messages
+            if m.role in ("user", "assistant")
+        ]
+        kwargs: dict[str, Any] = dict(
+            model=self.model, max_tokens=max_tokens, temperature=temperature, messages=convo
+        )
+        if system:
+            kwargs["system"] = system
+        if tools:
+            kwargs["tools"] = [
+                {"name": t.name, "description": t.description, "input_schema": t.parameters}
+                for t in tools
+            ]
+        resp = client.messages.create(**kwargs)
+        text_parts, tool_calls = [], []
+        for block in resp.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+            elif block.type == "tool_use":
+                tool_calls.append({"name": block.name, "arguments": block.input, "id": block.id})
+        return LLMResponse(text="".join(text_parts), tool_calls=tool_calls, raw=resp)
+
+    def _openai(self, messages, tools, max_tokens, temperature) -> LLMResponse:
+        try:
+            import openai
+        except ImportError as e:  # pragma: no cover
+            raise LLMError("pip install 'edith[llm]' to use OpenAI/OpenRouter") from e
+
+        if self.provider == "openrouter":
+            key = self.api_keys.get("openrouter")
+            client = openai.OpenAI(api_key=key, base_url="https://openrouter.ai/api/v1")
+        else:
+            key = self.api_keys.get("openai")
+            client = openai.OpenAI(api_key=key)
+        if not key:
+            raise LLMError(f"{self.provider.upper()}_API_KEY not set")
+
+        payload = [{"role": m.role, "content": m.content} for m in messages]
+        kwargs: dict[str, Any] = dict(
+            model=self.model, max_tokens=max_tokens, temperature=temperature, messages=payload
+        )
+        if tools:
+            kwargs["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    },
+                }
+                for t in tools
+            ]
+        resp = client.chat.completions.create(**kwargs)
+        choice = resp.choices[0].message
+        tool_calls = []
+        for tc in getattr(choice, "tool_calls", None) or []:
+            import json
+
+            tool_calls.append(
+                {
+                    "name": tc.function.name,
+                    "arguments": json.loads(tc.function.arguments or "{}"),
+                    "id": tc.id,
+                }
+            )
+        return LLMResponse(text=choice.content or "", tool_calls=tool_calls, raw=resp)

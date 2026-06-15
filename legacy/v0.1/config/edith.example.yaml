@@ -1,0 +1,29 @@
+# E.D.I.T.H. configuration. Copy to config/edith.yaml and edit.
+home: .edith
+model: anthropic:claude-opus-4-8
+permission_level: 2          # 0 read-only · 1 suggest · 2 sandboxed · 3 host · 4 autonomous
+log_level: INFO
+
+browser:
+  headless: true
+  engine: patchright         # patchright | playwright | camoufox
+  # proxy: http://user:pass@residential-host:port
+  proxy_pool: []             # rotate a residential pool — the #1 anti-block factor
+  locale: en-US
+  timezone: America/New_York
+  min_action_delay_ms: 40
+  max_action_delay_ms: 380
+
+memory:
+  db_path: .edith/memory.sqlite
+  profile: default           # namespacing kills the Hermes "junk drawer" effect
+  dedup_threshold: 0.92
+  embed_dim: 256
+
+security:
+  authorization_file: config/authorization.yaml
+  require_authorization: true
+
+ruflo:
+  enabled: true
+  default_topology: hierarchical   # hierarchical | mesh | adaptive

@@ -1,0 +1,19 @@
+# Authorization scope for the offensive-security toolkit.
+# Copy to config/authorization.yaml. WITHOUT this file, all offensive actions are refused.
+#
+# Only list hosts/networks you OWN or have WRITTEN authorization to test
+# (CTF ranges, your own lab, a signed pentest engagement).
+
+engagement: "Home lab — self-owned"
+authorized_by: "you@example.com"        # the human accountable for this scope
+expires: "2026-12-31"                    # scope auto-expires (ISO date)
+
+targets:
+  - "127.0.0.1"
+  - "192.168.1.0/24"
+  - "*.lab.local"
+
+rules_of_engagement:
+  - "no denial-of-service"
+  - "no data exfiltration"
+  - "stop on out-of-scope discovery"

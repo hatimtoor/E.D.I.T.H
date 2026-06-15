@@ -1,0 +1,42 @@
+E.D.I.T.H. ("Even Dead, I'm The Hero")
+======================================
+
+E.D.I.T.H. is a hybrid fork. It builds on two upstream open-source projects,
+both used under the MIT License. Their original LICENSE terms and copyright
+notices are retained.
+
+------------------------------------------------------------------------------
+Core ("brain") — forked from Hermes Agent
+------------------------------------------------------------------------------
+Project:   Hermes Agent
+Author:    Nous Research
+License:   MIT (Copyright (c) 2025 Nous Research)  — see LICENSE
+Source:    https://github.com/NousResearch/hermes-agent
+Forked at: commit 0428945b5b07f430e23b4fc28b2bff6887477463 (2026-06-14)
+
+The Hermes git history is preserved in this repository and tracked as the
+git remote "upstream" so improvements can be pulled in over time. E.D.I.T.H.
+modifies and extends this codebase.
+
+------------------------------------------------------------------------------
+Channel capabilities — ported from OpenClaw
+------------------------------------------------------------------------------
+Project:   OpenClaw
+Author:    OpenClaw Foundation
+License:   MIT (Copyright (c) 2026 OpenClaw Foundation)
+Source:    https://github.com/openclaw/openclaw
+
+Selected channel-adapter concepts and capabilities are ported from OpenClaw's
+TypeScript extensions into E.D.I.T.H.'s Python gateway. Attribution is retained
+in the ported modules.
+
+------------------------------------------------------------------------------
+Build orchestration — ruflo
+------------------------------------------------------------------------------
+ruflo (v3.10.x) is used as a BUILD-TIME orchestration tool only (swarm,
+autopilot, memory, MCP). It is NOT a runtime dependency of E.D.I.T.H.
+
+------------------------------------------------------------------------------
+The prior v0.1 fresh-build prototype is archived under legacy/v0.1/ and is being
+ported onto this fork (stealth browser, skill protection lock, memory
+namespacing, authorization gate).

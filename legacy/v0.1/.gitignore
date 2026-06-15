@@ -1,0 +1,29 @@
+# env / secrets
+.env
+config/edith.yaml
+config/authorization.yaml
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# edith runtime state
+.edith/
+*.sqlite
+*.sqlite-*
+workspace/
+WORKING.md
+memory/*.md
+
+# browser
+.cache/
+ms-playwright/
+
+# os
+.DS_Store
+Thumbs.db
