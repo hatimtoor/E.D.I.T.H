@@ -72,10 +72,13 @@ class LLMClient:
                 # Anthropic has no standalone tool role; surface the result as a user turn.
                 convo.append({"role": "user", "content": f"[tool result: {m.name}]\n{m.content}"})
 
+        # sacred prompt caching: cache system + last-3 messages to reuse the prefix cache
+        from edith.core.prompt_cache import prepare_anthropic_caching
+        system_param, convo = prepare_anthropic_caching(system, convo)
         kwargs: dict[str, Any] = dict(model=self.model, max_tokens=max_tokens,
                                       temperature=temperature, messages=convo)
-        if system:
-            kwargs["system"] = system
+        if system_param:
+            kwargs["system"] = system_param
         if tools:
             kwargs["tools"] = [{"name": t.name, "description": t.description,
                                 "input_schema": t.parameters} for t in tools]
