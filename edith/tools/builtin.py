@@ -123,6 +123,27 @@ class ToolBox:
         except Exception as e:
             return f"scan error: {type(e).__name__}: {e}"
 
+    def http_fingerprint(self, target: str) -> str:
+        from edith.security.scan import http_fingerprint
+        scope = load_scope(self.config.security.authorization_file)
+        try:
+            return str(http_fingerprint(target, scope))
+        except OutOfScopeError as e:
+            return f"refused: {e}"
+
+    def path_probe(self, target: str) -> str:
+        from edith.security.scan import probe_paths
+        scope = load_scope(self.config.security.authorization_file)
+        try:
+            found = probe_paths(target, scope)
+            return f"exposed paths: {found}" if found else "no sensitive paths exposed"
+        except OutOfScopeError as e:
+            return f"refused: {e}"
+
+    def cve_audit(self, package: str, version: str) -> str:
+        from edith.security.scan import cve_audit
+        return str(cve_audit(package, version))   # software lookup; no scope needed
+
     # ── skills ──────────────────────────────────────────────────────
     def save_skill(self, name: str, summary: str, body: str) -> str:
         try:
@@ -193,6 +214,15 @@ def register_default_tools(agent) -> ToolBox:
     agent.register("security_scan", "Authorized port/TLS scan (refuses out-of-scope hosts).",
                    {"type": "object", "properties": {"target": _S}, "required": ["target"]},
                    box.security_scan)
+    agent.register("http_fingerprint", "Authorized HTTP fingerprint + missing security headers.",
+                   {"type": "object", "properties": {"target": _S}, "required": ["target"]},
+                   box.http_fingerprint)
+    agent.register("path_probe", "Authorized probe for exposed sensitive paths (.git/.env/admin).",
+                   {"type": "object", "properties": {"target": _S}, "required": ["target"]},
+                   box.path_probe)
+    agent.register("cve_audit", "Check a package@version for known CVEs (OSV.dev).",
+                   {"type": "object", "properties": {"package": _S, "version": _S},
+                    "required": ["package", "version"]}, box.cve_audit)
     agent.register("save_skill", "Save a reusable skill (name, summary, body).",
                    {"type": "object", "properties": {"name": _S, "summary": _S, "body": _S},
                     "required": ["name", "summary", "body"]}, box.save_skill)
