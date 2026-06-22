@@ -52,6 +52,26 @@ def _has_secret(*parts: str) -> bool:
     return bool(_SECRET_RE.search("\n".join(p for p in parts if p)))
 
 
+def _parse_frontmatter(text: str) -> tuple[dict, str]:
+    """Split a `---`-delimited YAML frontmatter block from the markdown body."""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            import yaml
+            fm = yaml.safe_load(text[3:end]) or {}
+            return (fm if isinstance(fm, dict) else {}), text[end + 4:].lstrip("\n")
+    return {}, text
+
+
+def _dump_frontmatter(skill: "Skill") -> str:
+    """Render a portable agentskills.io SKILL.md (frontmatter + body)."""
+    import yaml
+    fm = {"name": skill.name, "description": skill.summary,
+          "metadata": {"edith": {"protected": skill.protected, "source": skill.source,
+                                 "params": skill.params}}}
+    return "---\n" + yaml.safe_dump(fm, sort_keys=False).strip() + "\n---\n\n" + skill.body
+
+
 class SkillRegistry:
     """Filesystem-backed skill store: <root>/<name>/SKILL.md + meta.json."""
 
@@ -66,21 +86,50 @@ class SkillRegistry:
 
     def _load_all(self) -> None:
         for d in self.root.iterdir():
+            if not d.is_dir():
+                continue
+            sm = d / "SKILL.md"
             meta = d / "meta.json"
+            if not sm.exists() and not meta.exists():
+                continue
+            fm, body = ({}, "")
+            if sm.exists():
+                fm, body = _parse_frontmatter(sm.read_text(encoding="utf-8"))
             if meta.exists():
+                # authoritative E.D.I.T.H sidecar (back-compat + fast)
                 m = json.loads(meta.read_text(encoding="utf-8"))
-                body = (d / "SKILL.md").read_text(encoding="utf-8") if (d / "SKILL.md").exists() else ""
-                self._skills[m["name"]] = Skill(
-                    name=m["name"], summary=m.get("summary", ""), params=m.get("params", {}),
-                    body=body, protected=m.get("protected", False), source=m.get("source", "agent"))
+                name, summary = m["name"], m.get("summary", "")
+                params = m.get("params", {})
+                protected, source = m.get("protected", False), m.get("source", "agent")
+            else:
+                # external agentskills.io pack (frontmatter only)
+                em = (fm.get("metadata") or {}).get("edith") or {}
+                name = fm.get("name") or d.name
+                summary = fm.get("description", "")
+                params = em.get("params", {})
+                protected, source = em.get("protected", False), em.get("source", "imported")
+            self._skills[name] = Skill(name=name, summary=summary, params=params,
+                                       body=body, protected=protected, source=source)
 
     def _persist(self, skill: Skill) -> None:
         d = self._skill_dir(skill.name)
         d.mkdir(parents=True, exist_ok=True)
-        (d / "SKILL.md").write_text(skill.body, encoding="utf-8")
+        # portable agentskills.io SKILL.md (frontmatter + body) ...
+        (d / "SKILL.md").write_text(_dump_frontmatter(skill), encoding="utf-8")
+        # ... plus a fast E.D.I.T.H sidecar
         (d / "meta.json").write_text(json.dumps(
             {"name": skill.name, "summary": skill.summary, "params": skill.params,
              "protected": skill.protected, "source": skill.source}, indent=2), encoding="utf-8")
+
+    def import_skill(self, path: str, *, by_agent: bool = False) -> Skill:
+        """Import an external agentskills.io SKILL.md (file or dir) as a skill."""
+        p = Path(path)
+        text = (p / "SKILL.md").read_text(encoding="utf-8") if p.is_dir() \
+            else p.read_text(encoding="utf-8")
+        fm, body = _parse_frontmatter(text)
+        name = fm.get("name") or (p.stem if p.is_file() else p.name)
+        return self.create(Skill(name=name, summary=fm.get("description", ""),
+                                 body=body, source="imported"), by_agent=by_agent)
 
     # ── progressive loading ─────────────────────────────────────────
     def catalog(self, level: SkillLevel = SkillLevel.SUMMARY) -> str:
