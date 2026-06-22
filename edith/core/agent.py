@@ -80,6 +80,8 @@ class Agent:
         agent can actually *do things*, not just chat."""
         from edith.tools import register_default_tools
         self._toolbox = register_default_tools(self)
+        from edith.core.delegation import register_delegate_tool
+        register_delegate_tool(self)
         return self._toolbox
 
     def _toolspecs(self) -> list[ToolSpec]:
