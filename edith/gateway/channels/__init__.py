@@ -8,4 +8,9 @@ register_channel("telegram", TelegramChannel)
 register_channel("whatsapp", WhatsAppChannel)
 register_channel("webhook", WebhookChannel)
 
-__all__ = ["TelegramChannel", "WhatsAppChannel", "WebhookChannel"]
+# all remaining adapters
+from edith.gateway.channels.more import ALL_ADAPTERS
+for _cls in ALL_ADAPTERS:
+    register_channel(_cls.name, _cls)
+
+__all__ = ["TelegramChannel", "WhatsAppChannel", "WebhookChannel", "ALL_ADAPTERS"]
