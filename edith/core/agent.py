@@ -87,12 +87,14 @@ class Agent:
     def _toolspecs(self) -> list[ToolSpec]:
         return [t.spec for t in self.tools.values()]
 
-    def step(self, user_input: str, *, max_tool_rounds: int = 6) -> str:
+    def step(self, user_input: str, *, max_tool_rounds: int = 8) -> str:
+        import json as _json
         msgs = self.ctx.build(user_input, self.history)
         self.history.append(Message("user", user_input))
         self.state.add_message(self.session.id, "user", user_input)
+        seen: dict[str, str] = {}   # signature -> result, to break repeat-call loops
 
-        for _ in range(max_tool_rounds):
+        for rnd in range(max_tool_rounds):
             resp = self.llm.chat(msgs, tools=self._toolspecs())
             if resp.text:
                 self.history.append(Message("assistant", resp.text))
@@ -106,13 +108,25 @@ class Agent:
                     log.debug("learning step failed: %s", e)
                 self.history = self.history[-_HISTORY_CAP:]
                 return resp.text
+            last_round = rnd == max_tool_rounds - 1
             for call in resp.tool_calls:
-                result = self._dispatch(call)
+                sig = f"{call['name']}:{_json.dumps(call.get('arguments') or {}, sort_keys=True)}"
+                if sig in seen:
+                    result = (f"(identical call already made; result was: {seen[sig][:300]}). "
+                              "Do NOT repeat it — answer from what you have or try a different input.")
+                else:
+                    result = self._dispatch(call)
+                    seen[sig] = result
                 self.state.add_message(self.session.id, "tool", result, tool_name=call["name"])
                 msgs.append(Message("tool", result, name=call["name"],
                                     tool_call_id=call.get("id")))
+            if last_round:   # force a final answer instead of silently giving up
+                msgs.append(Message("user", "Tool budget reached. Give your best final answer now "
+                                            "using the information already gathered."))
+        # one last no-tools call to synthesize an answer
+        final = self.llm.chat(msgs).text or "(no answer)"
         self.history = self.history[-_HISTORY_CAP:]
-        return "(stopped: reached max tool rounds)"
+        return final
 
     def _dispatch(self, call: dict) -> str:
         tool = self.tools.get(call["name"])

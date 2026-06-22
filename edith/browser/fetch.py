@@ -35,7 +35,9 @@ def search(query: str, *, cfg: StealthConfig | None = None, limit: int = 5) -> l
     """
     async def _go():
         async with StealthBrowser(cfg or StealthConfig()) as b:
-            page = await b.goto("https://www.bing.com/search?q=" + _q(query))
+            # force English/US market so results don't geolocate to the server's IP
+            page = await b.goto("https://www.bing.com/search?setlang=en&cc=US&mkt=en-US&q="
+                                + _q(query))
             # textContent (not innerText) — headless has no layout, so innerText is empty.
             results = await page.evaluate(
                 r"""(limit) => {

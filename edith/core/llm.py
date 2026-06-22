@@ -38,12 +38,16 @@ class LLMError(RuntimeError):
 
 class LLMClient:
     def __init__(self, model: str, *, api_keys: dict[str, str | None] | None = None):
+        from edith.core.providers import get_provider
+        # accept "provider:model" (preferred) OR "provider/model" when the head is a known
+        # provider (OpenRouter slugs themselves use "/", e.g. openrouter:deepseek/r1:free).
         if ":" in model:
             self.provider, self.model = model.split(":", 1)
+        elif "/" in model and get_provider(model.split("/", 1)[0]):
+            self.provider, self.model = model.split("/", 1)
         else:
             self.provider, self.model = "anthropic", model
         self.api_keys = api_keys or {}
-        from edith.core.providers import get_provider
         self.profile = get_provider(self.provider)
 
     def _env_name(self) -> str:
@@ -105,7 +109,10 @@ class LLMClient:
         if tools:
             kwargs["tools"] = [{"name": t.name, "description": t.description,
                                 "input_schema": t.parameters} for t in tools]
-        resp = client.messages.create(**kwargs)
+        try:
+            resp = client.messages.create(**kwargs)
+        except Exception as e:
+            raise LLMError(f"{self.provider} API error: {e}") from e
         text_parts, tool_calls = [], []
         for block in resp.content:
             if block.type == "text":
@@ -141,7 +148,10 @@ class LLMClient:
             kwargs["tools"] = [{"type": "function", "function": {
                 "name": t.name, "description": t.description, "parameters": t.parameters,
             }} for t in tools]
-        resp = client.chat.completions.create(**kwargs)
+        try:
+            resp = client.chat.completions.create(**kwargs)
+        except Exception as e:
+            raise LLMError(f"{self.provider} API error: {e}") from e
         choice = resp.choices[0].message
         tool_calls = []
         for tc in getattr(choice, "tool_calls", None) or []:
