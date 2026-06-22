@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from edith.core.context_engine import ContextEngine, ContextCompressor
 from edith.core.llm import Message
 from edith.memory import MemoryLayer, MemoryStore
 from edith.skills import SkillLevel, SkillRegistry
@@ -32,6 +33,7 @@ class ContextBuilder:
     skills: SkillRegistry
     system_prompt: str = ""
     budget: ContextBudget = field(default_factory=ContextBudget)
+    engine: ContextEngine = field(default_factory=ContextCompressor)
     working_file: str = "WORKING.md"   # Agent passes an absolute path under its home
 
     def build(self, user_input: str, history: list[Message]) -> list[Message]:
@@ -50,10 +52,9 @@ class ContextBuilder:
         msgs.extend(history)
         msgs.append(Message("user", user_input))
 
-        total = sum(estimate_tokens(m.content) for m in msgs)
-        if total > self.budget.max_tokens * self.budget.flush_at:
-            self._flush(history)
-            msgs = self._truncate(msgs)
+        if self.engine.should_compress(msgs):
+            self._flush(history)               # durable recovery snapshot first
+            msgs = self.engine.compress(msgs)  # cache-safe middle compaction
         return msgs
 
     def _truncate(self, msgs: list[Message]) -> list[Message]:
