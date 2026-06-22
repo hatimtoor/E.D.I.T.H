@@ -31,6 +31,38 @@ class ToolBox:
                              proxy_pool=b.proxy_pool, captcha_key=b.captcha_key,
                              locale=b.locale, timezone=b.timezone)
 
+    def _session(self):
+        # persistent interactive browser shared across this agent's tool calls
+        if getattr(self, "_browser_session", None) is None:
+            from edith.browser.session import BrowserSession
+            self._browser_session = BrowserSession(self._browser_cfg())
+        return self._browser_session
+
+    # ── interactive browser (drive a real page step by step) ────────
+    def browser_navigate(self, url: str) -> str:
+        try:
+            return f"navigated; title: {self._session().navigate(url)}"
+        except Exception as e:
+            return f"browser_navigate error: {type(e).__name__}: {e}"
+
+    def browser_read(self, selector: str = "body") -> str:
+        try:
+            return self._session().read(selector)
+        except Exception as e:
+            return f"browser_read error: {type(e).__name__}: {e}"
+
+    def browser_click(self, selector: str) -> str:
+        try:
+            return self._session().click(selector)
+        except Exception as e:
+            return f"browser_click error: {type(e).__name__}: {e}"
+
+    def browser_type(self, selector: str, text: str) -> str:
+        try:
+            return self._session().type_text(selector, text)
+        except Exception as e:
+            return f"browser_type error: {type(e).__name__}: {e}"
+
     # ── web ─────────────────────────────────────────────────────────
     def web_fetch(self, url: str) -> str:
         from edith.browser.fetch import browse
@@ -138,6 +170,17 @@ def register_default_tools(agent) -> ToolBox:
     agent.register("web_search", "Search the web and return top results (title/url/snippet).",
                    {"type": "object", "properties": {"query": _S, "limit": {"type": "integer"}},
                     "required": ["query"]}, box.web_search)
+    agent.register("browser_navigate", "Open a URL in the interactive stealth browser.",
+                   {"type": "object", "properties": {"url": _S}, "required": ["url"]},
+                   box.browser_navigate)
+    agent.register("browser_read", "Read text from the current page (CSS selector, default body).",
+                   {"type": "object", "properties": {"selector": _S}}, box.browser_read)
+    agent.register("browser_click", "Click an element on the current page (CSS selector).",
+                   {"type": "object", "properties": {"selector": _S}, "required": ["selector"]},
+                   box.browser_click)
+    agent.register("browser_type", "Type text into an element (CSS selector) with human cadence.",
+                   {"type": "object", "properties": {"selector": _S, "text": _S},
+                    "required": ["selector", "text"]}, box.browser_type)
     agent.register("remember", "Save a durable fact to long-term memory.",
                    {"type": "object", "properties": {"text": _S}, "required": ["text"]},
                    box.remember)
