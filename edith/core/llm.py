@@ -43,18 +43,29 @@ class LLMClient:
         else:
             self.provider, self.model = "anthropic", model
         self.api_keys = api_keys or {}
+        from edith.core.providers import get_provider
+        self.profile = get_provider(self.provider)
+
+    def _resolve_key(self) -> str | None:
+        p = self.profile
+        if p and p.auth == "none":
+            return p.name  # local server ignores the value
+        import os
+        return (self.api_keys.get(self.provider)
+                or (os.getenv(p.env_key) if p and p.env_key else None))
 
     def chat(self, messages: list[Message], *, tools: list[ToolSpec] | None = None,
              max_tokens: int = 4096, temperature: float = 0.7) -> LLMResponse:
-        if self.provider == "anthropic":
+        mode = self.profile.api_mode if self.profile else self.provider
+        if mode == "anthropic":
             return self._anthropic(messages, tools, max_tokens, temperature)
-        if self.provider in ("openai", "openrouter", "ollama", "lmstudio"):
+        if mode == "openai":
             return self._openai(messages, tools, max_tokens, temperature)
         raise LLMError(f"unknown provider: {self.provider!r}")
 
     # ── anthropic ───────────────────────────────────────────────────
     def _anthropic(self, messages, tools, max_tokens, temperature) -> LLMResponse:
-        key = self.api_keys.get("anthropic")
+        key = self._resolve_key()
         if not key:
             raise LLMError("ANTHROPIC_API_KEY not set")
         try:
@@ -93,20 +104,10 @@ class LLMClient:
 
     # ── openai / openrouter ─────────────────────────────────────────
     def _openai(self, messages, tools, max_tokens, temperature) -> LLMResponse:
-        # validate key BEFORE constructing the client (else the SDK silently reads env).
-        # ollama / lmstudio are local OpenAI-compatible servers — no real key needed.
-        if self.provider == "openrouter":
-            key = self.api_keys.get("openrouter")
-            base_url = "https://openrouter.ai/api/v1"
-        elif self.provider == "ollama":
-            key = "ollama"  # placeholder; local server ignores it
-            base_url = "http://localhost:11434/v1"
-        elif self.provider == "lmstudio":
-            key = "lm-studio"
-            base_url = "http://localhost:1234/v1"
-        else:
-            key = self.api_keys.get("openai")
-            base_url = None
+        # base_url + key come from the provider profile (declarative). Local servers
+        # (auth="none") get a placeholder key. Validate BEFORE constructing the client.
+        key = self._resolve_key()
+        base_url = self.profile.base_url if self.profile else None
         if not key:
             raise LLMError(f"{self.provider.upper()}_API_KEY not set")
         try:
