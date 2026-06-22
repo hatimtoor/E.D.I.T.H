@@ -54,6 +54,10 @@ class Agent:
         self.ctx = ContextBuilder(self.memory, self.skills, system_prompt=DEFAULT_SYSTEM,
                                   working_file=str(home / "WORKING.md"))
         self.history: list[Message] = []
+        # persistent session/message state (survives restarts, FTS-searchable)
+        from edith.core.state import SessionDB
+        self.state = SessionDB(str(home / "state.sqlite"))
+        self.session = self.state.create_session(source="cli", model=self.config.model)
 
     def register(self, name: str, description: str, parameters: dict, fn: Callable[..., str]):
         self.tools[name] = Tool(ToolSpec(name, description, parameters), fn)
@@ -71,17 +75,20 @@ class Agent:
     def step(self, user_input: str, *, max_tool_rounds: int = 6) -> str:
         msgs = self.ctx.build(user_input, self.history)
         self.history.append(Message("user", user_input))
+        self.state.add_message(self.session.id, "user", user_input)
 
         for _ in range(max_tool_rounds):
             resp = self.llm.chat(msgs, tools=self._toolspecs())
             if resp.text:
                 self.history.append(Message("assistant", resp.text))
+                self.state.add_message(self.session.id, "assistant", resp.text)
             if not resp.tool_calls:
                 self._remember_turn(user_input, resp.text)
                 self.history = self.history[-_HISTORY_CAP:]
                 return resp.text
             for call in resp.tool_calls:
                 result = self._dispatch(call)
+                self.state.add_message(self.session.id, "tool", result, tool_name=call["name"])
                 msgs.append(Message("tool", result, name=call["name"],
                                     tool_call_id=call.get("id")))
         self.history = self.history[-_HISTORY_CAP:]
@@ -107,3 +114,4 @@ class Agent:
 
     def close(self) -> None:
         self.memory.close()
+        self.state.close()

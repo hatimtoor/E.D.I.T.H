@@ -20,6 +20,8 @@ app.add_typer(browser_app, name="browser")
 app.add_typer(web_app, name="web")
 app.add_typer(skills_app, name="skills")
 app.add_typer(memory_app, name="memory")
+sessions_app = typer.Typer(help="Persistent sessions + history search")
+app.add_typer(sessions_app, name="sessions")
 app.add_typer(sec_app, name="security")
 
 con = Console()
@@ -219,6 +221,39 @@ def memory_stats():
         t.add_row(layer.value, str(m.count(layer)))
     con.print(t)
     m.close()
+
+
+# ── sessions ────────────────────────────────────────────────────────
+def _state_db():
+    from edith.core.state import SessionDB
+    return SessionDB(str(load_config().home_path / "state.sqlite"))
+
+
+@sessions_app.command("list")
+def sessions_list(limit: int = 20):
+    """List recent persisted sessions."""
+    import datetime as _dt
+    d = _state_db()
+    t = Table(title="sessions"); t.add_column("id"); t.add_column("source")
+    t.add_column("msgs"); t.add_column("tokens(in/out)"); t.add_column("updated")
+    for s in d.list_sessions(limit=limit):
+        t.add_row(s.id, s.source, str(s.message_count),
+                  f"{s.input_tokens}/{s.output_tokens}",
+                  _dt.datetime.fromtimestamp(s.updated).strftime("%Y-%m-%d %H:%M"))
+    con.print(t)
+    d.close()
+
+
+@sessions_app.command("search")
+def sessions_search(query: str, limit: int = 15):
+    """Full-text search across all past messages."""
+    d = _state_db()
+    hits = d.search(query, limit=limit)
+    if not hits:
+        con.print("[yellow]no matches[/]")
+    for h in hits:
+        con.print(f"[dim]{h['session_id']}[/] [bold]{h['role']}[/]: {h['content'][:160]}")
+    d.close()
 
 
 # ── security ────────────────────────────────────────────────────────
