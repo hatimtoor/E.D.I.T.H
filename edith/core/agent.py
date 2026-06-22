@@ -58,6 +58,10 @@ class Agent:
         from edith.core.state import SessionDB
         self.state = SessionDB(str(home / "state.sqlite"))
         self.session = self.state.create_session(source="cli", model=self.config.model)
+        # closed-loop learning (heuristic by default = zero extra LLM cost; trajectory export on)
+        from edith.core.learning import Learner
+        self.learner = Learner(self.memory, self.skills, llm=None,
+                               trajectory_path=str(home / "trajectories.jsonl"))
 
     def register(self, name: str, description: str, parameters: dict, fn: Callable[..., str]):
         self.tools[name] = Tool(ToolSpec(name, description, parameters), fn)
@@ -84,6 +88,11 @@ class Agent:
                 self.state.add_message(self.session.id, "assistant", resp.text)
             if not resp.tool_calls:
                 self._remember_turn(user_input, resp.text)
+                try:                                   # learn + export; never crash the turn
+                    self.learner.export_trajectory(self.history)
+                    self.learner.review(user_input, resp.text)
+                except Exception as e:
+                    log.debug("learning step failed: %s", e)
                 self.history = self.history[-_HISTORY_CAP:]
                 return resp.text
             for call in resp.tool_calls:
