@@ -47,6 +47,7 @@ class MemoryConfig(BaseModel):
     profile: str = "default"              # namespacing fixes the "junk drawer" effect
     dedup_threshold: float = 0.92
     embed_dim: int = 256
+    provider: str = "local"               # memory backend: local | <plugin>
 
 
 class SecurityConfig(BaseModel):

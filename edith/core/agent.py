@@ -45,6 +45,15 @@ class Agent:
             dedup_threshold=self.config.memory.dedup_threshold,
             embed_dim=self.config.memory.embed_dim,
         )
+        # memory backend behind the MemoryProvider ABC (default local; pluggable)
+        from edith.memory import LocalMemoryProvider, get_memory_provider
+        prov_cls = get_memory_provider(self.config.memory.provider)
+        try:
+            self.memory_provider = prov_cls(self.memory) if prov_cls else LocalMemoryProvider(self.memory)
+            if not self.memory_provider.is_available():
+                self.memory_provider = LocalMemoryProvider(self.memory)
+        except Exception:
+            self.memory_provider = LocalMemoryProvider(self.memory)
         self.skills = SkillRegistry(root=str(home / "skills"))
         self.llm = LLMClient(self.config.model, api_keys={
             "anthropic": self.config.anthropic_api_key,
@@ -114,10 +123,7 @@ class Agent:
 
     def _remember_turn(self, user_input: str, reply: str) -> None:
         try:
-            self.memory.remember(f"Q: {user_input}\nA: {reply[:500]}",
-                                 layer=MemoryLayer.EPISODIC)
-        except InjectionBlocked as e:
-            log.warning("memory checkpoint skipped — injection pattern flagged: %s", e)
+            self.memory_provider.sync_turn(user_input, reply)   # routes through the provider ABC
         except Exception as e:
             log.debug("memory checkpoint failed: %s", e)
 
