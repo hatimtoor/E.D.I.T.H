@@ -22,6 +22,8 @@ app.add_typer(skills_app, name="skills")
 app.add_typer(memory_app, name="memory")
 sessions_app = typer.Typer(help="Persistent sessions + history search")
 app.add_typer(sessions_app, name="sessions")
+gateway_app = typer.Typer(help="Messaging gateway (Telegram/WhatsApp/... )")
+app.add_typer(gateway_app, name="gateway")
 app.add_typer(sec_app, name="security")
 
 con = Console()
@@ -221,6 +223,52 @@ def memory_stats():
         t.add_row(layer.value, str(m.count(layer)))
     con.print(t)
     m.close()
+
+
+# ── gateway ─────────────────────────────────────────────────────────
+@gateway_app.command("channels")
+def gateway_channels():
+    """List every supported channel and whether it's live or planned."""
+    import edith.gateway.channels  # noqa: registers live adapters
+    from edith.gateway.registry import CHANNELS
+    t = Table(title="messaging channels", header_style="bold")
+    t.add_column("channel"); t.add_column("status"); t.add_column("transport"); t.add_column("needs")
+    for name in sorted(CHANNELS, key=lambda n: (CHANNELS[n].status != "live", n)):
+        s = CHANNELS[name]
+        mark = "[green]live[/]" if s.status == "live" else "[dim]planned[/]"
+        t.add_row(name, mark, s.transport, ", ".join(s.needs) or "-")
+    con.print(t)
+
+
+@gateway_app.command("run")
+def gateway_run(channel: str = typer.Argument(..., help="live channel, e.g. telegram")):
+    """Run the gateway for a channel (long-running; needs that channel's credentials)."""
+    import edith.gateway.channels  # noqa
+    from edith.gateway.registry import get_channel
+    from edith.gateway.runtime import Gateway
+    spec = get_channel(channel)
+    if not spec or not spec.adapter:
+        con.print(f"[red]no live adapter for '{channel}'[/] — see `edith gateway channels`")
+        return
+    ch = spec.adapter()
+    if not ch.is_configured():
+        con.print(f"[yellow]{channel} not configured[/] — set: {', '.join(spec.needs)}")
+        return
+
+    def make_agent(_key: str):
+        from edith.core.agent import Agent
+        a = Agent()
+        a.load_default_tools()
+        return a
+
+    gw = Gateway(agent_factory=make_agent, channels=[ch])
+    con.print(f"[green]gateway up[/] on {channel}. Ctrl-C to stop.")
+    try:
+        gw.run()
+    except KeyboardInterrupt:
+        con.print("\n[dim]gateway stopped[/]")
+    finally:
+        gw.close()
 
 
 # ── sessions ────────────────────────────────────────────────────────
