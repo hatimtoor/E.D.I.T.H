@@ -116,27 +116,38 @@ def chat():
 
 @app.command()
 def models():
-    """Discover usable LLMs: cloud keys + local Ollama / LM Studio models."""
-    import os
+    """List all supported LLM providers and which are usable (key set / local server up)."""
+    from edith.core.llm import LLMClient
+    from edith.core.providers import list_providers, get_provider
     t = Table(title="LLM providers", header_style="bold")
-    t.add_column("provider"); t.add_column("status / models")
-    t.add_row("anthropic", "[green]key set[/]" if os.getenv("ANTHROPIC_API_KEY") else "[dim]no key[/]")
-    t.add_row("openai", "[green]key set[/]" if os.getenv("OPENAI_API_KEY") else "[dim]no key[/]")
+    t.add_column("provider"); t.add_column("status"); t.add_column("endpoint")
+    ready = []
+    for name in list_providers():
+        p = get_provider(name)
+        c = LLMClient(f"{name}:x")
+        if p and p.auth == "none":
+            status, ep = "[cyan]local[/]", p.base_url
+        elif c._resolve_key():
+            status, ep = "[green]key set[/]", (c._resolve_base_url() or "sdk default")
+            ready.append(name)
+        else:
+            status, ep = "[dim]no key[/]", (p.base_url or "-") if p else "-"
+        t.add_row(name, status, ep or "-")
+    # probe local servers
     for name, url in (("ollama", "http://localhost:11434/api/tags"),
                       ("lmstudio", "http://localhost:1234/v1/models")):
         try:
             import urllib.request, json as _j
             with urllib.request.urlopen(url, timeout=2) as r:
                 data = _j.loads(r.read().decode())
-            if name == "ollama":
-                tags = [m["name"] for m in data.get("models", [])][:8]
-            else:
-                tags = [m["id"] for m in data.get("data", [])][:8]
-            t.add_row(name, "[green]running[/] " + (", ".join(tags) or "(no models pulled)"))
+            tags = ([m["name"] for m in data.get("models", [])] if name == "ollama"
+                    else [m["id"] for m in data.get("data", [])])[:6]
+            con.print(f"[green]{name} running[/]: {', '.join(tags) or '(no models)'}")
         except Exception:
-            t.add_row(name, "[dim]not running[/]")
+            pass
     con.print(t)
-    con.print("[dim]Use one with:  EDITH_MODEL=ollama:<model> python -m edith run \"...\"[/]")
+    con.print(f"[dim]{len(ready)} ready by key. Use any: EDITH_MODEL=<provider>:<model> "
+              "python -m edith run \"...\"  ·  override URL/key via EDITH_<NAME>_BASE_URL/_API_KEY[/]")
 
 
 # ── browser ─────────────────────────────────────────────────────────

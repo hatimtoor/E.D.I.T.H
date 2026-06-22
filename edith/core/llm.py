@@ -46,13 +46,25 @@ class LLMClient:
         from edith.core.providers import get_provider
         self.profile = get_provider(self.provider)
 
+    def _env_name(self) -> str:
+        return self.provider.upper().replace("-", "_")
+
     def _resolve_key(self) -> str | None:
+        import os
         p = self.profile
         if p and p.auth == "none":
             return p.name  # local server ignores the value
+        cands = [self.api_keys.get(self.provider)]
+        if p and p.env_key:
+            cands.append(os.getenv(p.env_key))
+        cands.append(os.getenv(f"EDITH_{self._env_name()}_API_KEY"))
+        cands.append(os.getenv(f"{self._env_name()}_API_KEY"))
+        return next((c for c in cands if c), None)
+
+    def _resolve_base_url(self) -> str | None:
         import os
-        return (self.api_keys.get(self.provider)
-                or (os.getenv(p.env_key) if p and p.env_key else None))
+        return (os.getenv(f"EDITH_{self._env_name()}_BASE_URL")
+                or (self.profile.base_url if self.profile else None))
 
     def chat(self, messages: list[Message], *, tools: list[ToolSpec] | None = None,
              max_tokens: int = 4096, temperature: float = 0.7) -> LLMResponse:
@@ -107,7 +119,7 @@ class LLMClient:
         # base_url + key come from the provider profile (declarative). Local servers
         # (auth="none") get a placeholder key. Validate BEFORE constructing the client.
         key = self._resolve_key()
-        base_url = self.profile.base_url if self.profile else None
+        base_url = self._resolve_base_url()
         if not key:
             raise LLMError(f"{self.provider.upper()}_API_KEY not set")
         try:
