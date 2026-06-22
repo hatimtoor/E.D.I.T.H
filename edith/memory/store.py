@@ -98,9 +98,13 @@ class MemoryStore:
 
     def remember(self, content: str, *, layer: MemoryLayer = MemoryLayer.EPISODIC,
                  key: str | None = None, scan: bool = True) -> MemoryRecord | None:
-        if scan and _INJECTION_RE.search(_normalize(content)):
-            log.warning("memory write refused: injection pattern matched (profile=%s)", self.profile)
-            raise InjectionBlocked("content matched an injection pattern; refused to persist")
+        if scan:
+            from edith.core import threat
+            hit = threat.scan(content, scope="memory")
+            if hit:
+                log.warning("memory write refused: injection pattern %r (profile=%s)",
+                            hit, self.profile)
+                raise InjectionBlocked("content matched an injection pattern; refused to persist")
         vec = vector.embed(content, self.embed_dim)
         for _row, score in self._scan_scope(layer, vec):
             if score >= self.dedup_threshold:
