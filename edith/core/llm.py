@@ -36,6 +36,17 @@ class LLMError(RuntimeError):
     pass
 
 
+def _repair_if_needed(text: str, tool_calls: list) -> tuple[str, list]:
+    """If the model returned no structured tool_calls but embedded them in text, recover them."""
+    if tool_calls or not text:
+        return text, tool_calls
+    from edith.core.toolcall_repair import parse_text_tool_calls, strip_tool_call_text
+    repaired = parse_text_tool_calls(text)
+    if repaired:
+        return strip_tool_call_text(text), repaired
+    return text, tool_calls
+
+
 class LLMClient:
     def __init__(self, model: str, *, api_keys: dict[str, str | None] | None = None):
         from edith.core.providers import get_provider
@@ -119,7 +130,9 @@ class LLMClient:
                 text_parts.append(block.text)
             elif block.type == "tool_use":
                 tool_calls.append({"name": block.name, "arguments": block.input, "id": block.id})
-        return LLMResponse(text="".join(text_parts), tool_calls=tool_calls, raw=resp)
+        text = "".join(text_parts)
+        text, tool_calls = _repair_if_needed(text, tool_calls)
+        return LLMResponse(text=text, tool_calls=tool_calls, raw=resp)
 
     # ── openai / openrouter ─────────────────────────────────────────
     def _openai(self, messages, tools, max_tokens, temperature) -> LLMResponse:
@@ -159,4 +172,5 @@ class LLMClient:
             tool_calls.append({"name": tc.function.name,
                                "arguments": json.loads(tc.function.arguments or "{}"),
                                "id": tc.id})
-        return LLMResponse(text=choice.content or "", tool_calls=tool_calls, raw=resp)
+        text, tool_calls = _repair_if_needed(choice.content or "", tool_calls)
+        return LLMResponse(text=text, tool_calls=tool_calls, raw=resp)
